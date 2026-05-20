@@ -13,12 +13,106 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.decomposition import PCA
 from sklearn.linear_model import LinearRegression
+from sklearn.metrics import roc_auc_score
 
 from data.dataset import get_file_stems
 
 
 # NIR wavelength labels (approximate, 23nm spacing)
 BAND_LABELS = [f"Band {i+1}" for i in range(9)]
+
+
+def gather_class_pixels(images, masks, stems, data_dir, band_indices=None):
+    """Collect per-band pixel values for healthy vs defect regions.
+
+    Args:
+        images: list of (H, W, C) reflectance arrays.
+        masks: list of (H, W) defect masks (0=bg, >0=defect).
+        stems: list of file stems (for whole-apple mask lookup).
+        data_dir: root dir (used to find whole/ apple masks).
+        band_indices: optional subset of bands to keep (same candidate set the
+            gate will see). None -> all bands.
+
+    Returns:
+        (normal_pixels, defect_pixels): arrays of shape (N, C_sel).
+    """
+    normal, defect = [], []
+    for img, mask, stem in zip(images, masks, stems):
+        if band_indices is not None:
+            img = img[..., band_indices]
+        apple_npy = os.path.join(data_dir, "whole", stem + ".npy")
+        if os.path.exists(apple_npy):
+            apple_mask = np.load(apple_npy).astype(np.int64)
+        else:
+            apple_mask = (img.mean(axis=2) > 0.05).astype(np.int64)
+
+        healthy = (apple_mask > 0) & (mask == 0)
+        defective = mask > 0
+        if healthy.any():
+            normal.append(img[healthy])
+        if defective.any():
+            defect.append(img[defective])
+
+    n_bands = images[0].shape[-1] if band_indices is None else len(band_indices)
+    normal = np.concatenate(normal, axis=0) if normal else np.empty((0, n_bands))
+    defect = np.concatenate(defect, axis=0) if defect else np.empty((0, n_bands))
+    return normal, defect
+
+
+def compute_band_prior(normal_pixels, defect_pixels, metric="fisher",
+                       max_pixels=300000, seed=42):
+    """Per-band defect-vs-normal separability prior (univariate).
+
+    Computes reflectance gap, Cohen's d, Fisher ratio, and AUC for every band,
+    then z-scores the chosen `metric` across bands to form `prior` (a vector the
+    DiagonalBandGate consumes as p_b).
+
+    IMPORTANT: call this on the TRAIN split only (per fold) to avoid leaking
+    val/test labels into the prior.
+
+    Returns:
+        dict with keys: prior, metric, refl_gap, cohens_d, fisher, auc, auc_sep.
+    """
+    rng = np.random.RandomState(seed)
+
+    def _subsample(a):
+        if len(a) > max_pixels:
+            return a[rng.choice(len(a), max_pixels, replace=False)]
+        return a
+
+    normal = _subsample(np.asarray(normal_pixels, dtype=np.float64))
+    defect = _subsample(np.asarray(defect_pixels, dtype=np.float64))
+    n0, n1 = len(normal), len(defect)
+    if n0 == 0 or n1 == 0:
+        raise ValueError("Need both normal and defect pixels to compute prior.")
+
+    n_bands = normal.shape[1]
+    mu_n, mu_d = normal.mean(0), defect.mean(0)
+    var_n, var_d = normal.var(0), defect.var(0)
+
+    refl_gap = np.abs(mu_d - mu_n)
+    pooled = np.sqrt(((n0 - 1) * var_n + (n1 - 1) * var_d) / max(n0 + n1 - 2, 1))
+    cohens_d = np.abs(mu_d - mu_n) / (pooled + 1e-8)
+    fisher = (mu_d - mu_n) ** 2 / (var_n + var_d + 1e-8)
+
+    labels = np.concatenate([np.zeros(n0), np.ones(n1)])
+    auc = np.empty(n_bands)
+    for b in range(n_bands):
+        scores = np.concatenate([normal[:, b], defect[:, b]])
+        auc[b] = roc_auc_score(labels, scores)
+    auc_sep = np.abs(2 * auc - 1)  # direction-agnostic separability
+
+    metrics = {
+        "refl_gap": refl_gap,
+        "cohens_d": cohens_d,
+        "fisher": fisher,
+        "auc": auc,
+        "auc_sep": auc_sep,
+    }
+    base = metrics.get(metric, fisher)
+    prior = (base - base.mean()) / (base.std() + 1e-8)
+
+    return {"prior": prior, "metric": metric, **metrics}
 
 
 def load_all_data(data_dir, image_dir="images", mask_dir="masks"):
