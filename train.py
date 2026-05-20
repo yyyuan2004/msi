@@ -348,6 +348,10 @@ def train(cfg, seed, output_dir, splits=None):
     for epoch in range(start_epoch, train_cfg["num_epochs"] + 1):
         t0 = time.time()
 
+        # Update band-gate schedule (tau/beta anneal); no-op if model has no gate.
+        if hasattr(model, "set_gate_progress"):
+            model.set_gate_progress((epoch - 1) / max(1, train_cfg["num_epochs"] - 1))
+
         # Train
         train_loss = train_one_epoch(model, train_loader, criterion, optimizer, device)
 
@@ -383,11 +387,16 @@ def train(cfg, seed, output_dir, splits=None):
 
         # Print progress
         if epoch % 10 == 0 or epoch == 1:
+            gate_msg = ""
+            if hasattr(model, "get_selected_bands"):
+                sel = model.get_selected_bands()
+                if sel is not None:
+                    gate_msg = f" | Gate bands: {sel}"
             print(f"Epoch {epoch:03d}/{train_cfg['num_epochs']} | "
                   f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | "
                   f"IoU(defect): {defect_iou:.4f} | F1: {val_results['F1_macro']:.4f} | "
                   f"LR: {optimizer.param_groups[0]['lr']:.2e} | "
-                  f"Time: {elapsed:.1f}s")
+                  f"Time: {elapsed:.1f}s{gate_msg}")
 
         # Save best model + early stopping check
         if defect_iou > best_iou_c1:
@@ -460,6 +469,29 @@ def train(cfg, seed, output_dir, splits=None):
         _f.write(f"best_epoch={best_epoch}\n")
         _f.write(f"final_epoch={epoch_logs[-1]['epoch'] if epoch_logs else 0}\n")
 
+    # If a band gate was used, persist the deployment selection for Phase 2.
+    selected_bands = None
+    if hasattr(model, "get_selected_bands"):
+        selected_bands = model.get_selected_bands()
+    if selected_bands is not None:
+        # The gate operates on the (possibly pre-selected) input channels, so
+        # selected_bands are indices into cfg.data.band_indices. Map them back
+        # to global band indices when a candidate subset was used.
+        candidate = cfg["data"].get("band_indices")
+        if candidate is not None:
+            global_bands = [candidate[i] for i in selected_bands]
+        else:
+            global_bands = selected_bands
+        with open(os.path.join(output_dir, "selected_bands.json"), "w") as _f:
+            json.dump({
+                "selected_bands_local": selected_bands,
+                "selected_bands_global": global_bands,
+                "candidate_band_indices": candidate,
+                "seed": seed,
+            }, _f, indent=2)
+        print(f"Band gate selected bands (local idx): {selected_bands} "
+              f"-> global: {global_bands}")
+
     print(f"\nTraining complete. Best IoU(defect): {best_iou_c1:.4f} at epoch {best_epoch}")
     print(f"Checkpoints saved to: {ckpt_dir}")
 
@@ -470,6 +502,7 @@ def train(cfg, seed, output_dir, splits=None):
         "best_iou_c1": best_iou_c1,
         "best_epoch": best_epoch,
         "output_dir": output_dir,
+        "selected_bands": selected_bands,
     }
 
 
