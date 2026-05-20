@@ -72,6 +72,7 @@ To change a global hyperparameter (e.g., epochs, num_workers), edit `_defaults.y
 **SMP (segmentation_models_pytorch)**
 | Config | Architecture |
 |--------|-------------|
+| `smp_unet_resnet18` | U-Net + ResNet18 |
 | `smp_unet_resnet34` | U-Net + ResNet34 |
 | `smp_unetplusplus_resnet34` | UNet++ + ResNet34 |
 | `smp_linknet_resnet34` | Linknet + ResNet34 |

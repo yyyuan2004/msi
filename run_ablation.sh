@@ -14,10 +14,11 @@
 
 set -e
 
-# 15 configs: 2 custom + 6 SMP + 3 TopFormer + 3 SeaFormer + 2 PIDNet
+# 17 configs: 2 custom + 7 SMP + 3 TopFormer + 3 SeaFormer + 2 PIDNet
 CONFIGS=(
     "baseline"
     "spconv_se"
+    "smp_unet_resnet18"
     "smp_unet_resnet34"
     "smp_unetplusplus_resnet34"
     "smp_linknet_resnet34"

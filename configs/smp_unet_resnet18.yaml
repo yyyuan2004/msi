@@ -1,0 +1,11 @@
+# SMP U-Net with ResNet18 encoder
+_base: _defaults.yaml
+
+experiment_name: "smp_unet_resnet18"
+
+model:
+  architecture: "smp"
+  smp_arch: "Unet"
+  smp_encoder: "resnet18"
+  num_classes: 2
+  encoder_pretrained: true
