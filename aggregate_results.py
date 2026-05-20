@@ -10,6 +10,7 @@ from collections import defaultdict
 CONFIGS = [
     "baseline",
     "spconv_se",
+    "smp_unet_resnet18",
     "smp_unet_resnet34",
     "smp_unetplusplus_resnet34",
     "smp_linknet_resnet34",
@@ -28,6 +29,7 @@ CONFIGS = [
 CONFIG_DISPLAY = {
     "baseline": "baseline",
     "spconv_se": "+SpConv+SE",
+    "smp_unet_resnet18": "smp-UNet-R18",
     "smp_unet_resnet34": "smp-UNet-R34",
     "smp_unetplusplus_resnet34": "smp-UNet++-R34",
     "smp_linknet_resnet34": "smp-LinkNet-R34",

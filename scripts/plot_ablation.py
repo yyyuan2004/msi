@@ -23,6 +23,7 @@ import matplotlib.ticker as mticker
 CONFIGS = [
     "baseline",
     "spconv_se",
+    "smp_unet_resnet18",
     "smp_unet_resnet34",
     "smp_unetplusplus_resnet34",
     "smp_linknet_resnet34",
@@ -42,6 +43,7 @@ CONFIGS = [
 DISPLAY = {
     "baseline": "Baseline",
     "spconv_se": "SpConv+SE",
+    "smp_unet_resnet18": "UNet-R18",
     "smp_unet_resnet34": "UNet-R34",
     "smp_unetplusplus_resnet34": "UNet++-R34",
     "smp_linknet_resnet34": "LinkNet-R34",
