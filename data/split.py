@@ -6,7 +6,7 @@ from sklearn.model_selection import KFold
 
 
 def get_data_splits(data_dir, image_dir="images", seed=42,
-                    train_ratio=0.70, val_ratio=0.30, test_ratio=0.0):
+                    train_ratio=0.70, val_ratio=0.15, test_ratio=0.15):
     """Split data into train/val/test sets with a fixed random seed.
 
     Args:

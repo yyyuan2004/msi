@@ -342,7 +342,10 @@ def visualize_augmentations(cfg, output_dir, num_samples=3):
 # ---------------------------------------------------------------------------
 
 def run_eval(cfg, seed, output_dir, splits=None):
-    """在 val set 上运行评估，生成所有评估输出。
+    """Evaluate the best checkpoint and generate all evaluation outputs.
+
+    Reports on the held-out TEST split when available (single 0.7/0.15/0.15
+    split); falls back to the val split in k-fold mode where test is empty.
 
     Args:
         splits: Optional pre-computed splits dict (for k-fold mode).
@@ -365,10 +368,13 @@ def run_eval(cfg, seed, output_dir, splits=None):
             seed=seed,
         )
 
+    eval_split = "test" if splits.get("test") else "val"
+    print(f"  [eval] reporting on '{eval_split}' split ({len(splits[eval_split])} samples)")
+
     val_transform = get_val_transforms(cfg)
     ds_kwargs = get_dataset_kwargs(cfg)
     val_dataset = MSIDataset(
-        splits["val"], data_dir=data_dir,
+        splits[eval_split], data_dir=data_dir,
         image_dir=cfg["data"]["image_dir"],
         mask_dir=cfg["data"]["mask_dir"],
         transform=val_transform,
@@ -493,10 +499,10 @@ def run_single(cfg, seed, output_dir, experiment_name, args, splits=None, fold_t
     else:
         print("\n[Step 2/4] No training_log.json found, skipping curve plotting.")
 
-    # Step 3: Evaluation on val set
+    # Step 3: Evaluation on the held-out split (test for single split, val for k-fold)
     eval_results = None
     if not args.skip_eval:
-        print("\n[Step 3/4] Evaluating on validation set...")
+        print("\n[Step 3/4] Evaluating on held-out split...")
         eval_results = run_eval(cfg, seed, output_dir, splits=splits)
     else:
         print("\n[Step 3/4] Evaluation skipped (--skip_eval)")
