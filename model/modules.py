@@ -68,17 +68,18 @@ class SpectralConv1D(nn.Module):
 
 
 class DiagonalBandGate(nn.Module):
-    """Static diagonal band-selection gate with straight-through hard top-k.
+    """Prior-free diagonal band-selection gate with straight-through hard top-k.
 
     Selects exactly ``k`` of ``num_bands`` input channels. The gate is a single
-    learnable score vector (one scalar per band), so the same bands are kept for
-    every image — this is a *selection* mechanism (read off the kept bands and
+    learnable score vector ``theta`` (one scalar per band), so the same bands are
+    kept for every image — a *selection* mechanism (read off the kept bands and
     physically drop the others at deployment), not the per-sample reweighting of
-    an SE block.
+    an SE block. No spectral prior is injected; the selection is purely data
+    driven from the segmentation loss.
 
     Score / soft-prob / mask::
 
-        s_b   = theta_b + beta * prior_b
+        s_b   = theta_b
         g_b   = sigmoid(s_b / tau)              # soft keep-prob (gradient path)
         m     = top-k(s)                        # hard k-hot mask
         m_st  = m + g - g.detach()              # straight-through estimator
@@ -86,35 +87,26 @@ class DiagonalBandGate(nn.Module):
     During training the forward pass applies the HARD mask ``m`` (the backbone
     always sees exactly k bands, matching deployment), while gradients flow to
     ALL bands through ``g`` — so an unselected band can still earn its way in,
-    instead of the gate locking onto its initialization.
+    instead of the gate locking onto its initialization. ``tau`` is annealed by
+    :meth:`set_progress` (call once per epoch with ``frac`` in [0, 1]) from
+    ``tau_start`` to ``tau_end`` (soft/explore -> near-hard/commit).
 
-    ``tau`` and ``beta`` are annealed by :meth:`set_progress` (call once per
-    epoch with ``frac`` in [0, 1]):
-        - ``tau``  : ``tau_start`` -> ``tau_end`` (cosine), soft -> near-hard.
-        - ``beta`` : ``beta_start`` -> ``beta_end`` (linear over ``beta_anneal_frac``),
-          prior-guided early -> data-driven late.
-
-    The *deployment* selection (used by :meth:`selected_bands`) always evaluates
-    the score at ``beta_end`` so it is independent of the current schedule state.
+    With ``k == num_bands`` the gate is the identity (all bands pass), so
+    ``M_{k=B}`` is exactly the full-input baseline.
 
     Args:
         num_bands: Number of input channels (= encoder ``in_channels``).
         k: Number of bands to keep (1 <= k <= num_bands).
-        prior: Optional length-``num_bands`` band-importance vector (HSI prior).
-            ``None`` -> zeros (pure data-driven selection).
         tau_start, tau_end: Temperature annealing endpoints.
-        beta_start, beta_end: Prior-strength annealing endpoints.
-        beta_anneal_frac: Fraction of training over which beta reaches beta_end.
-        prior_init_scale: Warm-start ``theta`` at ``prior_init_scale * prior``.
-        theta_init_noise: Std of Gaussian added to theta init (breaks top-k ties
-            when there is no prior / no warm-start).
+        theta_init_noise: Std of Gaussian theta init (breaks top-k ties).
+        random_select: If True, freeze the gate on a fixed *random* k-subset
+            (untrained) — a same-architecture control showing the learned
+            selection is not arbitrary.
     """
 
-    def __init__(self, num_bands, k, prior=None,
+    def __init__(self, num_bands, k,
                  tau_start=1.0, tau_end=0.05,
-                 beta_start=1.0, beta_end=0.0,
-                 beta_anneal_frac=0.5, prior_init_scale=0.0,
-                 theta_init_noise=0.01):
+                 theta_init_noise=0.01, random_select=False):
         super().__init__()
         if not (1 <= k <= num_bands):
             raise ValueError(f"k must be in [1, {num_bands}], got {k}")
@@ -123,45 +115,31 @@ class DiagonalBandGate(nn.Module):
         self.k = k
         self.tau_start = float(tau_start)
         self.tau_end = float(tau_end)
-        self.beta_start = float(beta_start)
-        self.beta_end = float(beta_end)
-        self.beta_anneal_frac = float(beta_anneal_frac)
+        self.random_select = bool(random_select)
 
-        if prior is None:
-            prior_t = torch.zeros(num_bands, dtype=torch.float32)
-        else:
-            prior_t = torch.as_tensor(prior, dtype=torch.float32).flatten()
-            if prior_t.numel() != num_bands:
-                raise ValueError(
-                    f"prior length {prior_t.numel()} != num_bands {num_bands}"
-                )
-        self.register_buffer("prior", prior_t)
-
-        theta0 = prior_init_scale * prior_t.clone()
         if theta_init_noise > 0:
-            theta0 = theta0 + theta_init_noise * torch.randn(num_bands)
+            theta0 = theta_init_noise * torch.randn(num_bands)
+        else:
+            theta0 = torch.zeros(num_bands)
         self.theta = nn.Parameter(theta0)
+
+        if self.random_select:
+            # Fixed random k-subset; frozen (no learning) -> "not arbitrary" control.
+            with torch.no_grad():
+                self.theta.zero_()
+                idx = torch.randperm(num_bands)[:k]
+                self.theta[idx] = 1.0
+            self.theta.requires_grad_(False)
 
         # Schedule state; defaults to fully-annealed so a freshly loaded model
         # (e.g. in eval.py without any set_progress call) behaves as deployment.
         self.register_buffer("_tau", torch.tensor(self.tau_end))
-        self.register_buffer("_beta", torch.tensor(self.beta_end))
 
     def set_progress(self, frac):
-        """Update tau/beta for the current training progress (frac in [0, 1])."""
+        """Update tau for the current training progress (frac in [0, 1])."""
         frac = float(min(max(frac, 0.0), 1.0))
         cos = 0.5 * (1.0 + math.cos(math.pi * frac))  # 1 -> 0 as frac 0 -> 1
-        tau = self.tau_end + (self.tau_start - self.tau_end) * cos
-        if self.beta_anneal_frac <= 0:
-            beta = self.beta_end
-        else:
-            t = min(frac / self.beta_anneal_frac, 1.0)
-            beta = self.beta_start + (self.beta_end - self.beta_start) * t
-        self._tau.fill_(float(tau))
-        self._beta.fill_(float(beta))
-
-    def _scores(self):
-        return self.theta + self._beta * self.prior
+        self._tau.fill_(self.tau_end + (self.tau_start - self.tau_end) * cos)
 
     def _hard_mask(self, scores):
         idx = torch.topk(scores, self.k).indices
@@ -170,8 +148,8 @@ class DiagonalBandGate(nn.Module):
         return mask
 
     def forward(self, x):
-        scores = self._scores()
-        if self.training:
+        scores = self.theta
+        if self.training and not self.random_select:
             tau = self._tau.clamp_min(1e-4)
             g = torch.sigmoid(scores / tau)
             mask = self._hard_mask(scores)
@@ -182,11 +160,10 @@ class DiagonalBandGate(nn.Module):
 
     @torch.no_grad()
     def selected_bands(self):
-        """Return the sorted list of kept band indices at the deployment gate."""
-        scores = self.theta + self.beta_end * self.prior
-        return torch.topk(scores, self.k).indices.sort().values.tolist()
+        """Return the sorted list of kept band indices."""
+        return torch.topk(self.theta, self.k).indices.sort().values.tolist()
 
     def extra_repr(self):
-        return (f"num_bands={self.num_bands}, k={self.k}, "
-                f"tau={self.tau_start}->{self.tau_end}, "
-                f"beta={self.beta_start}->{self.beta_end}")
+        mode = "random" if self.random_select else "learned"
+        return (f"num_bands={self.num_bands}, k={self.k}, mode={mode}, "
+                f"tau={self.tau_start}->{self.tau_end}")

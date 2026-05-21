@@ -348,7 +348,7 @@ def train(cfg, seed, output_dir, splits=None):
     for epoch in range(start_epoch, train_cfg["num_epochs"] + 1):
         t0 = time.time()
 
-        # Update band-gate schedule (tau/beta anneal); no-op if model has no gate.
+        # Update band-gate schedule (tau anneal); no-op if model has no gate.
         if hasattr(model, "set_gate_progress"):
             model.set_gate_progress((epoch - 1) / max(1, train_cfg["num_epochs"] - 1))
 
