@@ -8,7 +8,6 @@ Supports three encoder backends (via config `encoder_name`):
 The decoder channel widths auto-adapt to the encoder's output channels.
 """
 
-import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -88,7 +87,7 @@ class SegmentationModel(nn.Module):
         return logits
 
     def set_gate_progress(self, frac):
-        """Update the band gate's tau/beta schedule (no-op if no gate)."""
+        """Update the band gate's tau schedule (no-op if no gate)."""
         if self.band_gate is not None:
             self.band_gate.set_progress(frac)
 
@@ -150,35 +149,21 @@ def build_model(cfg):
 
 
 def _build_band_gate(model_cfg, in_channels):
-    """Construct a DiagonalBandGate from config, or return None if disabled.
+    """Construct a prior-free DiagonalBandGate from config, or None if disabled.
 
     Config keys (under ``model``):
         use_band_gate: bool (default False)
         band_gate_k: int — number of bands to keep
-        band_gate_prior_path: str — .npz with a 'prior' array (HSI prior).
-            Empty string -> no prior (pure data-driven selection).
-        band_gate_tau_start / band_gate_tau_end
-        band_gate_beta_start / band_gate_beta_end / band_gate_beta_anneal_frac
-        band_gate_prior_init_scale
+        band_gate_tau_start / band_gate_tau_end — temperature anneal endpoints
+        band_gate_random_select: bool — freeze on a random k-subset (control)
     """
     if not model_cfg.get("use_band_gate", False):
         return None
 
-    prior = None
-    prior_path = model_cfg.get("band_gate_prior_path", "")
-    if prior_path:
-        loaded = np.load(prior_path)
-        # Support both .npz (NpzFile with 'prior') and a bare .npy vector.
-        prior = loaded["prior"] if hasattr(loaded, "files") else loaded
-
     return DiagonalBandGate(
         num_bands=in_channels,
         k=model_cfg.get("band_gate_k", 3),
-        prior=prior,
         tau_start=model_cfg.get("band_gate_tau_start", 1.0),
         tau_end=model_cfg.get("band_gate_tau_end", 0.05),
-        beta_start=model_cfg.get("band_gate_beta_start", 1.0),
-        beta_end=model_cfg.get("band_gate_beta_end", 0.0),
-        beta_anneal_frac=model_cfg.get("band_gate_beta_anneal_frac", 0.5),
-        prior_init_scale=model_cfg.get("band_gate_prior_init_scale", 0.0),
+        random_select=model_cfg.get("band_gate_random_select", False),
     )

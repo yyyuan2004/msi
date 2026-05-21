@@ -1,18 +1,16 @@
-# Diagonal band-selection gate (hard top-k) at the network input.
+# Prior-free diagonal band-selection gate (hard top-k) at the network input.
 #
-# Phase 1 (this config): feed the WIDE candidate input (all 9 bands) and let a
-# learnable gate select exactly `band_gate_k` bands. The selected indices are
-# written to <output_dir>/selected_bands.json.
+# Unified model:  M_k = Backbone ∘ G_k.  With k = num_channels the gate is the
+# identity, so the full-input baseline is just this model at k = B (gate off).
 #
-# Phase 2 (no new config needed): retrain a clean model on the selected subset
-# via the existing dataset path, e.g.
-#   configs/baseline.yaml with data.band_indices = <selected> and num_channels = k
+# The gate operates on the WIDE candidate input (all channels of the MSI set)
+# and passes exactly `band_gate_k` bands. Selected indices are written to
+# <output_dir>/selected_bands.json.
 #
-# Experiment arms (override on top of this file):
-#   - data-driven (default): band_gate_prior_path: ""   (prior has no effect)
-#   - prior-as-annealed-bias: set band_gate_prior_path to a band_prior_*.npz,
-#       keep beta_start: 1.0, beta_end: 0.0  (prior guides early, gone by end)
-#   - prior-as-init-only:      set prior path, prior_init_scale: 1.0, beta_start: 0.0
+# Comparison arms (the batch runner sets these per run):
+#   - gate     : use_band_gate: true,  band_gate_random_select: false
+#   - full     : use_band_gate: false  (all B channels -> M_{k=B})
+#   - random-k : use_band_gate: true,  band_gate_random_select: true  (control)
 _base: _defaults.yaml
 
 experiment_name: "gate_k3"
@@ -26,17 +24,13 @@ model:
 
   use_band_gate: true
   band_gate_k: 3
-  band_gate_prior_path: ""        # "" = pure data-driven; set to a band_prior_*.npz to use the HSI prior
   band_gate_tau_start: 1.0        # soft (explore) -> ...
   band_gate_tau_end: 0.05         # ... near-hard (commit), cosine annealed
-  band_gate_beta_start: 1.0       # prior strength at start (only matters if prior set)
-  band_gate_beta_end: 0.0         # prior removed by end -> final selection is data-driven
-  band_gate_beta_anneal_frac: 0.5 # beta reaches beta_end after 50% of training
-  band_gate_prior_init_scale: 0.0 # >0 warm-starts theta from the prior
+  band_gate_random_select: false  # true = frozen random k-subset control
 
 data:
-  num_channels: 9                 # WIDE candidate input
+  num_channels: 9                 # auto-overridden per dataset by the batch runner
   band_indices: null              # use all available bands (do NOT pre-select here)
 
 train:
-  num_epochs: 150                 # selection phase; shorter than the 300-ep deployment runs
+  num_epochs: 150                 # gate and full use the SAME budget for fairness
