@@ -68,7 +68,11 @@ def _load_resume_checkpoint(path, model, optimizer, scheduler, device):
     """Load resume checkpoint and return (start_epoch, best_iou_c1, best_epoch,
     no_improve_count, epoch_logs).
     """
-    ckpt = torch.load(path, map_location=device)
+    # Resume checkpoints embed numpy/python RNG state and the config dict, which
+    # PyTorch >=2.6 refuses to unpickle under the new weights_only=True default.
+    # These checkpoints are produced by this script (trusted source), so load fully.
+    ckpt = torch.load(path, map_location=device, weights_only=False)
+
     model.load_state_dict(ckpt["model_state_dict"])
     optimizer.load_state_dict(ckpt["optimizer_state_dict"])
     if "scheduler_state_dict" in ckpt:
