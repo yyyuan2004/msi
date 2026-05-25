@@ -55,9 +55,11 @@ eval:
   num_vis_samples: 10
   vis_bands: [0, 4, 8]
 
-# Shared model defaults (deep-merged into every config's `model:` block, so this
-# switch is available in all configs without editing each one).
+# Shared model defaults (deep-merged into every config's `model:` block, so these
+# switches are available in all configs without editing each one).
 model:
+  # Load ImageNet weights for the whole encoder backbone.
+  encoder_pretrained: true
   # Whether the encoder's INPUT conv copies ImageNet weights for its first 3
   # channels. Set to false to randomly initialize the whole input conv while the
   # deeper backbone stays pretrained (with encoder_pretrained: true) — this
@@ -65,4 +67,4 @@ model:
   # different input-channel counts (e.g. k-band gate vs full B-band input).
   # Honored by the default SegmentationModel (mobilenetv2/v3/efficientnet) and the
   # SMP models; ignored by the custom topformer/seaformer/pidnet backbones.
-  first_layer_pretrained: true
+  first_layer_pretrained: false
