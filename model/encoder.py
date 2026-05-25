@@ -7,7 +7,9 @@ Supported encoders:
 
 All encoders:
     - Adapt first conv from 3ch to in_channels (default 9).
-    - Copy ImageNet pretrained weights for first 3 channels, Kaiming init for the rest.
+    - Copy ImageNet pretrained weights for first 3 channels, Kaiming init for the rest
+      (set first_layer_pretrained=False to randomly initialize the whole input conv
+      while keeping the deeper backbone pretrained).
     - Return 5 feature levels [S1, S2, S3, S4, S5] for UNet skip connections.
 """
 
@@ -16,6 +18,27 @@ import torch.nn as nn
 from torchvision.models import mobilenet_v2, MobileNet_V2_Weights
 from torchvision.models import mobilenet_v3_large, MobileNet_V3_Large_Weights
 from torchvision.models import efficientnet_b0, EfficientNet_B0_Weights
+
+
+def _adapt_first_conv(new_conv, original_conv, in_channels, first_layer_pretrained):
+    """Initialize the adapted input convolution.
+
+    If ``first_layer_pretrained`` is True, copy the ImageNet weights into the
+    first 3 input channels and Kaiming-initialize any extra channels. If False,
+    Kaiming-initialize the *entire* input conv (the deeper backbone still keeps
+    its pretrained weights). The latter equalizes the input layer between models
+    with different channel counts, removing first-conv pretraining as a confound.
+    """
+    with torch.no_grad():
+        if first_layer_pretrained:
+            copy_ch = min(in_channels, 3)
+            new_conv.weight[:, :copy_ch, :, :] = original_conv.weight[:, :copy_ch].clone()
+            if in_channels > 3:
+                nn.init.kaiming_normal_(
+                    new_conv.weight[:, 3:, :, :], mode="fan_out", nonlinearity="relu"
+                )
+        else:
+            nn.init.kaiming_normal_(new_conv.weight, mode="fan_out", nonlinearity="relu")
 
 
 class MobileNetV2Encoder(nn.Module):
@@ -37,7 +60,7 @@ class MobileNetV2Encoder(nn.Module):
     STAGE_ENDS = [2, 4, 7, 14, 18]
     OUT_CHANNELS = [16, 24, 32, 96, 320]
 
-    def __init__(self, in_channels=9, pretrained=True):
+    def __init__(self, in_channels=9, pretrained=True, first_layer_pretrained=True):
         super().__init__()
 
         if pretrained:
@@ -51,15 +74,7 @@ class MobileNetV2Encoder(nn.Module):
             in_channels, 32, kernel_size=3, stride=2, padding=1, bias=False
         )
 
-        # Copy pretrained weights for first 3 channels
-        with torch.no_grad():
-            copy_ch = min(in_channels, 3)
-            new_conv.weight[:, :copy_ch, :, :] = original_conv.weight[:, :copy_ch].clone()
-            # Kaiming init for remaining channels (only if any extra channels exist)
-            if in_channels > 3:
-                nn.init.kaiming_normal_(
-                    new_conv.weight[:, 3:, :, :], mode="fan_out", nonlinearity="relu"
-                )
+        _adapt_first_conv(new_conv, original_conv, in_channels, first_layer_pretrained)
 
         backbone.features[0][0] = new_conv
 
@@ -109,7 +124,7 @@ class MobileNetV3Encoder(nn.Module):
     STAGE_ENDS = [2, 4, 7, 13, 16]
     OUT_CHANNELS = [16, 24, 40, 112, 960]
 
-    def __init__(self, in_channels=9, pretrained=True):
+    def __init__(self, in_channels=9, pretrained=True, first_layer_pretrained=True):
         super().__init__()
 
         if pretrained:
@@ -124,13 +139,7 @@ class MobileNetV3Encoder(nn.Module):
             in_channels, out_ch, kernel_size=3, stride=2, padding=1, bias=False
         )
 
-        with torch.no_grad():
-            copy_ch = min(in_channels, 3)
-            new_conv.weight[:, :copy_ch, :, :] = original_conv.weight[:, :copy_ch].clone()
-            if in_channels > 3:
-                nn.init.kaiming_normal_(
-                    new_conv.weight[:, 3:, :, :], mode="fan_out", nonlinearity="relu"
-                )
+        _adapt_first_conv(new_conv, original_conv, in_channels, first_layer_pretrained)
 
         backbone.features[0][0] = new_conv
 
@@ -184,7 +193,7 @@ class EfficientNetB0Encoder(nn.Module):
     STAGE_INDICES = [1, 2, 3, 5, 8]  # Which features[i] to extract
     OUT_CHANNELS = [16, 24, 40, 112, 1280]
 
-    def __init__(self, in_channels=9, pretrained=True):
+    def __init__(self, in_channels=9, pretrained=True, first_layer_pretrained=True):
         super().__init__()
 
         if pretrained:
@@ -198,13 +207,7 @@ class EfficientNetB0Encoder(nn.Module):
             in_channels, 32, kernel_size=3, stride=2, padding=1, bias=False
         )
 
-        with torch.no_grad():
-            copy_ch = min(in_channels, 3)
-            new_conv.weight[:, :copy_ch, :, :] = original_conv.weight[:, :copy_ch].clone()
-            if in_channels > 3:
-                nn.init.kaiming_normal_(
-                    new_conv.weight[:, 3:, :, :], mode="fan_out", nonlinearity="relu"
-                )
+        _adapt_first_conv(new_conv, original_conv, in_channels, first_layer_pretrained)
 
         backbone.features[0][0] = new_conv
 

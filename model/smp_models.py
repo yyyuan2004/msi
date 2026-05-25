@@ -32,7 +32,8 @@ class SMPModelWrapper(nn.Module):
     """
 
     def __init__(self, arch="Unet", encoder_name="resnet34",
-                 in_channels=9, num_classes=2, encoder_weights="imagenet"):
+                 in_channels=9, num_classes=2, encoder_weights="imagenet",
+                 first_layer_pretrained=True):
         super().__init__()
 
         if smp is None:
@@ -56,6 +57,14 @@ class SMPModelWrapper(nn.Module):
             classes=num_classes,
         )
 
+        # Optionally randomize only the encoder's input conv while keeping the
+        # deeper backbone pretrained (removes first-conv pretraining as a confound).
+        if encoder_weights is not None and not first_layer_pretrained:
+            for m in self.model.encoder.modules():
+                if isinstance(m, nn.Conv2d):
+                    nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
+                    break
+
     def forward(self, x):
         return self.model(x)
 
@@ -69,4 +78,5 @@ def build_smp_model(cfg):
         in_channels=cfg["data"].get("num_channels", 9),
         num_classes=model_cfg.get("num_classes", 2),
         encoder_weights="imagenet" if model_cfg.get("encoder_pretrained", True) else None,
+        first_layer_pretrained=model_cfg.get("first_layer_pretrained", True),
     )

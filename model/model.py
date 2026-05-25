@@ -34,6 +34,7 @@ class SegmentationModel(nn.Module):
 
     def __init__(self, num_classes=2, in_channels=9,
                  encoder_name="mobilenetv2", pretrained=True,
+                 first_layer_pretrained=True,
                  skip_module="none", se_reduction=16,
                  use_spectral_conv=False, spectral_conv_kernel_size=3,
                  band_gate=None):
@@ -50,7 +51,8 @@ class SegmentationModel(nn.Module):
                 f"Unknown encoder '{encoder_name}'. "
                 f"Available: {list(ENCODERS.keys())}"
             )
-        self.encoder = encoder_cls(in_channels=in_channels, pretrained=pretrained)
+        self.encoder = encoder_cls(in_channels=in_channels, pretrained=pretrained,
+                                   first_layer_pretrained=first_layer_pretrained)
 
         enc_channels = self.encoder.get_output_channels()
 
@@ -140,6 +142,7 @@ def build_model(cfg):
         in_channels=in_channels,
         encoder_name=model_cfg.get("encoder_name", "mobilenetv2"),
         pretrained=model_cfg.get("encoder_pretrained", True),
+        first_layer_pretrained=model_cfg.get("first_layer_pretrained", True),
         skip_module=model_cfg.get("skip_module", "none"),
         se_reduction=model_cfg.get("se_reduction", 16),
         use_spectral_conv=model_cfg.get("use_spectral_conv", False),
