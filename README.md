@@ -1,30 +1,84 @@
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/yyyuan2004/main-msibruisenet)
 
-# MSI-Bruise-Seg: Apple Multispectral Image Bruise Segmentation
+# MSI-Bruise-Seg
 
-Pixel-level semantic segmentation of apple bruise defects from 9-band near-infrared multispectral images (MSI).
-基于近红外多光谱图像（MSI）的苹果瘀伤（defect）像素级语义分割项目。
+**Apple Multispectral Image Bruise Segmentation**
+基于近红外多光谱图像（MSI）的苹果瘀伤像素级语义分割
+
+> Pixel-level semantic segmentation of apple bruise defects from 9-band NIR multispectral images (565-730 nm).
 
 ---
 
-## 1. Dataset
+## Quick Start
+
+```bash
+pip install -r requirements.txt
+
+# Single run (train + eval + plots)
+python train_eval.py --config configs/baseline.yaml --seed 42
+
+# 5-fold cross-validation
+python train_eval.py --config configs/baseline.yaml --seed 42 --kfold 5
+
+# Full ablation (17 configs x 3 seeds)
+bash run_ablation.sh
+
+# Generate comparison plots (after ablation)
+python scripts/plot_ablation.py
+```
+
+---
+
+## Dataset
 
 ```
 /root/autodl-tmp/datasets/185_9bands/
-├── images/    # .npy, shape (H, W, 9), float32 reflectance
-└── masks/     # .npy or .png, shape (H, W), 0=background / 1=bruise
+├── images/    # .npy, shape (H, W, 9), float32
+└── masks/     # .npy or .png, shape (H, W), binary
 ```
 
-- 185 annotated samples, 9 NIR bands (565-730 nm)
-- `images/` and `masks/` filenames correspond one-to-one
-
-> Change `data.data_dir` in `configs/_defaults.yaml` when switching datasets.
+185 annotated samples, 9 NIR bands. Change path in `configs/_defaults.yaml`.
 
 ---
 
-## 2. Config Inheritance System
+## Model Zoo
 
-All experiment configs inherit shared defaults via `_base`:
+| Category | Config | Architecture | 
+|----------|--------|--------------|
+| **Custom** | `baseline` | MobileNetV2 + UNet decoder |
+| | `spconv_se` | + SpectralConv1D + SE at every skip |
+| | `se` | + SE at every skip |
+| | `spconv` | + SpectralConv1D after S1 |
+| | `pca_baseline` | PCA-3ch + MobileNetV2-UNet |
+| **SMP** | `smp_unet_resnet18` | U-Net + ResNet18 |
+| | `smp_unet_resnet34` | U-Net + ResNet34 |
+| | `smp_unetplusplus_resnet34` | UNet++ + ResNet34 |
+| | `smp_linknet_resnet34` | Linknet + ResNet34 |
+| | `smp_manet_resnet34` | MAnet + ResNet34 |
+| | `smp_deeplabv3plus_mobilenetv2` | DeepLabV3+ + MobileNetV2 |
+| | `smp_fpn_efficientnetb0` | FPN + EfficientNet-B0 |
+| **Transformer** | `topformer_t/s/b` | TopFormer (1.4 / 3.1 / 5.1M) |
+| | `seaformer_t/s/b` | SeaFormer (1.7 / 4 / 8M) |
+| **Real-time** | `pidnet_s/m` | PIDNet (7.6 / 23M) |
+
+---
+
+## Training Settings
+
+All configs inherit from [`configs/_defaults.yaml`](configs/_defaults.yaml):
+
+| Setting | Value |
+|---------|-------|
+| Optimizer | AdamW (wd=1e-4) |
+| LR schedule | 5e-4 &rarr; 1e-6 (cosine) |
+| Epochs / Patience | 300 / 70 (early stop on class-1 IoU) |
+| Batch / Workers | 32 / 8 |
+| Loss | 0.5 CE + 0.5 Dice |
+| Input | 512&times;512, crop 384&times;384 |
+| Augmentation | H-flip, V-flip, {90, 180, 270}&deg; rotation |
+| Bands | `[0, 2, 4, 5]` (4 of 9) |
+
+Each experiment config only overrides what differs:
 
 ```yaml
 # configs/baseline.yaml
@@ -36,195 +90,78 @@ model:
   ...
 ```
 
-**`configs/_defaults.yaml`** contains the shared data/train/augment/eval settings.
-Each config only overrides what is unique (model architecture, special preprocessing).
+---
 
-To change a global hyperparameter (e.g., epochs, num_workers), edit `_defaults.yaml` once.
+## `in_channels` Adaptation
+
+| Encoder | Strategy |
+|---------|----------|
+| Custom (MobileNetV2 / V3 / EfficientNet-B0) | Copy first 3 pretrained channels + Kaiming init for extra |
+| SMP models | SMP built-in weight averaging/repeating |
+| TopFormer / SeaFormer / PIDNet | Same as Custom |
 
 ---
 
-## 3. Unified Training Hyperparameters
-
-| Parameter | Value |
-|-----------|-------|
-| Optimizer | AdamW, weight_decay=1e-4 |
-| Learning Rate | 5e-4, CosineAnnealing to 1e-6 |
-| Warmup | Optional (disabled by default) |
-| Epochs | 300 |
-| Batch Size | 32 |
-| Loss | 0.5*CE + 0.5*Dice |
-| Input Size | 512x512, random crop 384x384 |
-| Augmentation | h-flip / v-flip / {90,180,270} rotation |
-| Early Stopping | class-1 IoU, patience=70 |
-| num_workers | 8 |
-| Band selection | `band_indices=[0,2,4,5]`, `num_channels=4` (default) |
-
----
-
-## 4. Model Zoo
-
-**Custom MobileNetV2-UNet family**
-| Config | Modification |
-|--------|-------------|
-| `baseline` | Pure MobileNetV2 + UNet decoder |
-| `spconv_se` | + 1D SpectralConv after S1 + SE at every skip |
-
-**SMP (segmentation_models_pytorch)**
-| Config | Architecture |
-|--------|-------------|
-| `smp_unet_resnet18` | U-Net + ResNet18 |
-| `smp_unet_resnet34` | U-Net + ResNet34 |
-| `smp_unetplusplus_resnet34` | UNet++ + ResNet34 |
-| `smp_linknet_resnet34` | Linknet + ResNet34 |
-| `smp_manet_resnet34` | MAnet + ResNet34 |
-| `smp_deeplabv3plus_mobilenetv2` | DeepLabV3+ + MobileNetV2 |
-| `smp_fpn_efficientnetb0` | FPN + EfficientNet-B0 |
-
-**Lightweight Transformers & Real-time**
-| Config | Architecture | Params |
-|--------|-------------|--------|
-| `topformer_t/s/b` | TopFormer (CVPR 2022) | 1.4/3.1/5.1M |
-| `seaformer_t/s/b` | SeaFormer (ICLR 2023) | 1.7/4/8M |
-| `pidnet_s/m` | PIDNet (CVPR 2023) | 7.6/23M |
-
----
-
-## 5. in_channels Adaptation Strategy
-
-Different encoder families handle non-3-channel input differently:
-
-| Encoder type | Strategy | Details |
-|---|---|---|
-| Custom (MobileNetV2/V3/EfficientNet-B0) | Copy first 3 pretrained channels + Kaiming init for extra channels | `encoder.py`: copies ImageNet conv1 weights for ch 0-2, applies `kaiming_normal_` for ch 3+ |
-| SMP models | SMP built-in `in_channels` adaptation | Averages or repeats pretrained conv1 weights automatically (see `smp` library source) |
-| TopFormer / SeaFormer / PIDNet | Same as custom | First 3 channels copied from pretrained, remainder Kaiming-initialized |
-
----
-
-## 6. Quick Start
-
-```bash
-# 1. Install dependencies
-pip install -r requirements.txt
-# or for exact tested versions:
-pip install -r requirements.lock.txt
-
-# 2. Single config train+eval+plotting
-python train_eval.py --config configs/baseline.yaml --seed 42
-
-# 3. 5-fold cross-validation
-python train_eval.py --config configs/baseline.yaml --seed 42 --kfold 5
-
-# 4. Full ablation (16 configs x 3 seeds)
-bash run_ablation.sh
-
-# 5. Full ablation + k-fold
-bash run_ablation.sh --kfold 5
-
-# 6. Generate comparison plots only (after ablation)
-python scripts/plot_ablation.py
-
-# 7. HSI band range search (204-channel)
-bash run_band_search.sh
-```
-
----
-
-## 7. Project Structure
+## Project Structure
 
 ```
 .
-├── configs/
-│   ├── _defaults.yaml              # Shared base config (all others inherit)
-│   ├── baseline.yaml               # MobileNetV2-UNet
-│   ├── spconv_se.yaml              # + SpConv + SE
-│   ├── smp_*.yaml                  # 6 SMP configs
-│   ├── topformer_*.yaml            # 3 TopFormer configs
-│   ├── seaformer_*.yaml            # 3 SeaFormer configs
-│   └── pidnet_*.yaml               # 2 PIDNet configs
+├── configs/                 # _defaults.yaml + 19 experiment configs
 ├── data/
-│   ├── dataset.py                  # MSIDataset: .npy loading + band selection
-│   ├── augment.py                  # Spatial augmentations (image/mask sync)
-│   └── split.py                    # 7:3 split / k-fold
+│   ├── dataset.py           # MSIDataset (.npy + band selection)
+│   ├── augment.py           # Spatial augmentations
+│   └── split.py             # 7:3 split / k-fold
 ├── model/
-│   ├── encoder.py                  # MobileNetV2/V3/EfficientNet-B0 (in_ch adapt)
-│   ├── decoder.py                  # UNet decoder (skip: none/se)
-│   ├── modules.py                  # SEBlock, SpectralConv1D
-│   ├── smp_models.py              # SMP wrapper
-│   ├── topformer.py / seaformer.py / pidnet.py
-│   ├── model.py                    # build_model factory
-│   └── loss.py                     # CE+Dice / Focal
+│   ├── encoder.py           # MobileNetV2/V3/EfficientNet-B0
+│   ├── decoder.py           # UNet decoder (skip: none/se)
+│   ├── modules.py           # SEBlock, SpectralConv1D
+│   ├── smp_models.py        # SMP wrapper
+│   ├── topformer.py         # TopFormer
+│   ├── seaformer.py         # SeaFormer
+│   ├── pidnet.py            # PIDNet
+│   ├── model.py             # build_model() factory
+│   └── loss.py              # CE + Dice / Focal
 ├── utils/
-│   ├── config.py                   # Config loader with _base inheritance
-│   ├── metrics.py                  # IoU / F1 / Precision / Recall
-│   └── spectral_analysis.py       # Spectral pre-analysis
+│   ├── config.py            # YAML loader with _base inheritance
+│   ├── metrics.py           # IoU / F1 / Precision / Recall
+│   └── spectral_analysis.py # Band-level statistics
 ├── scripts/
-│   ├── band_range_search.py        # C(9,k) band exhaustive search
-│   ├── plot_ablation.py            # Publication-quality comparison plots
-│   └── ...
-├── train.py                        # Training loop (resume, early stopping)
-├── eval.py                         # Evaluation + TP/FP/FN error analysis
-├── train_eval.py                   # One-click: train -> eval -> plots (+ k-fold)
-├── run_ablation.sh                 # Full ablation automation
-├── run_band_search.sh              # HSI band search automation
-├── aggregate_results.py            # Aggregate multi-seed results
-├── requirements.txt                # Min version dependencies
-└── requirements.lock.txt           # Pinned tested versions
+│   ├── plot_ablation.py     # Publication-quality comparison plots
+│   └── band_*.py            # Band selection search scripts
+├── train.py                 # Training loop (resume + early stopping)
+├── eval.py                  # Evaluation + TP/FP/FN error analysis
+├── train_eval.py            # One-click: train → eval → plots
+├── run_ablation.sh          # Full ablation automation
+├── run_band_search.sh       # Band search automation
+└── aggregate_results.py     # Multi-seed result aggregation
 ```
 
 ---
 
-## 8. Evaluation & Visualization
+## Outputs
 
-Each (config, seed) run produces:
-- **Metrics**: class-1 IoU (primary), mIoU, F1, Precision, Recall
-- **Confusion matrix** PNG
-- **Prediction visualization**: per-sample raw bands + pseudo-color + pred vs GT
-- **Error analysis overlay**: per-sample TP (green) / FP (red) / FN (blue) overlay
-
-After full ablation, `scripts/plot_ablation.py` generates:
-- IoU/F1/mIoU box plots across all models
-- Grouped bar chart (all metrics side-by-side)
-- Params vs IoU scatter (efficiency frontier)
-
----
-
-## 9. Resume & Checkpointing
-
-- **Training resume**: `last_checkpoint.pth` saved every 10 epochs; on restart, training continues from last saved state (model + optimizer + scheduler + RNG).
-- **Run-level skip**: `done.flag` marks completed runs; `run_ablation.sh` automatically skips them.
-- **Band search resume**: per-combo partial JSON with atomic writes.
-- **`training_done.flag`**: written after training completes; skips the entire training loop on re-run.
-
----
-
-## 10. Output Structure
-
-**Single split (7:3):**
 ```
 outputs/<config>_seed<seed>/
 ├── checkpoints/best_model.pth
 ├── training_log.json
-├── visualization/
-│   ├── loss_curve.png
-│   ├── iou_f1_curve.png
-│   └── metrics_summary.png
+├── visualization/           # loss/IoU/F1 curves
 └── eval_results/
     ├── results.json
     ├── confusion_matrix.png
-    ├── visualizations/           # prediction comparison
-    └── error_analysis/           # TP/FP/FN overlays
-```
+    ├── visualizations/      # prediction vs GT
+    └── error_analysis/      # TP(green) / FP(red) / FN(blue) overlay
 
-**After ablation:**
-```
-outputs/
-├── ablation_table.txt
-└── ablation_plots/
-    ├── iou_boxplot.png
-    ├── f1_boxplot.png
-    ├── grouped_bar.png
-    └── params_vs_iou.png
+outputs/ablation_plots/      # after run_ablation.sh
+├── iou_boxplot.png
+├── f1_boxplot.png
+├── grouped_bar.png
+└── params_vs_iou.png
 ```
 
 ---
+
+## Resume & Checkpointing
+
+- `last_checkpoint.pth` saved every 10 epochs (model + optimizer + scheduler + RNG state)
+- `training_done.flag` skips completed training on re-run
+- `done.flag` marks fully completed runs; `run_ablation.sh` auto-skips them
