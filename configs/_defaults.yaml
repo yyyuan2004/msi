@@ -65,4 +65,4 @@ model:
   # different input-channel counts (e.g. k-band gate vs full B-band input).
   # Honored by the default SegmentationModel (mobilenetv2/v3/efficientnet) and the
   # SMP models; ignored by the custom topformer/seaformer/pidnet backbones.
-  first_layer_pretrained: true
+  first_layer_pretrained: false
