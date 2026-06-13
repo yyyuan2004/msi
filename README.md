@@ -27,6 +27,23 @@ bash run_ablation.sh
 python scripts/plot_ablation.py
 ```
 
+### Gate band-finding (k = 1, 2, 3)
+
+Run **only** the learnable band gate (no metrics, no baselines) to read off the
+physical bands it keeps, repeated 30× per `k`. Early stopping is on gate-selection
+stability (anneal `tau`, then stop once the chosen bands stop changing):
+
+```bash
+bash run_gate_band_finder.sh --data_dir /root/autodl-tmp/datasets/185_9bands
+# or directly:
+python scripts/gate_band_finder.py --ks 1,2,3 --runs 30
+python scripts/gate_band_finder.py --plots_only   # rebuild the figure from existing runs
+```
+
+Writes to `outputs/gate_band_finder/`: per-run `selected_bands.json`, an aggregated
+`band_selection_frequency.{json,csv}`, and the per-band frequency figure
+`band_frequency.png` (+ `band_frequency_by_k.png`).
+
 ---
 
 ## Dataset
