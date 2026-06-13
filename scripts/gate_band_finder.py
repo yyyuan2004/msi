@@ -51,6 +51,7 @@ import json
 import os
 import sys
 import time
+import traceback
 
 # Make the repo root importable when run as `python scripts/gate_band_finder.py`.
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -129,7 +130,8 @@ def train_gate_once(cfg, k, seed, out_dir, args, device, log_path):
         transform=get_train_transforms(cfg),
         num_classes=cfg["data"]["num_classes"], **ds_kwargs)
 
-    num_workers = cfg["train"].get("num_workers", 4)
+    num_workers = (args.num_workers if args.num_workers is not None
+                   else cfg["train"].get("num_workers", 4))
     loader = DataLoader(
         dataset, batch_size=args.batch_size or cfg["train"]["batch_size"],
         shuffle=True, num_workers=num_workers,
@@ -416,6 +418,8 @@ def main():
     ap.add_argument("--stable_patience", type=int, default=20,
                     help="Stop after the selection is unchanged for this many committed epochs")
     ap.add_argument("--batch_size", type=int, default=None)
+    ap.add_argument("--num_workers", type=int, default=None,
+                    help="DataLoader workers (override cfg). Use 0 on WSL if workers crash.")
     ap.add_argument("--lr", type=float, default=None)
     ap.add_argument("--wl_start", type=float, default=577.0,
                     help="Wavelength (nm) of local band 0 (paper Table 5: 577)")
@@ -484,7 +488,15 @@ def main():
                               f"({res['selected_wavelengths_nm']} nm) "
                               f"stop@{res['stopped_epoch']} ({time.time() - t0:.0f}s)")
             except Exception as e:  # noqa: BLE001 - keep the batch alive
+                tb = traceback.format_exc()
                 log(log_path, f"[FAIL {done}/{total}] k={k} seed={seed}: {e!r}")
+                log(log_path, tb)
+                try:
+                    os.makedirs(out_dir, exist_ok=True)
+                    with open(os.path.join(out_dir, "error.txt"), "w") as ef:
+                        ef.write(tb)
+                except OSError:
+                    pass
             # Refresh aggregation + figure after every run so partial progress is usable.
             build_outputs(args.out_root, num_bands, args.wl_start, args.wl_end)
 
