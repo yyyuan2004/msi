@@ -1,6 +1,12 @@
 # PCA Baseline: MobileNetV2-UNet with PCA 3-channel input (9ch -> 3ch)
-# Requires precomputed pca_matrix.npz:
-#   python scripts/precompute_pca.py --data_dir /root/autodl-tmp/datasets/185_9bands --output pca_matrix.npz
+#
+# Use the integrated, leak-free driver (fits PCA on the TRAIN split only, writes
+# the npz + a results package, then trains + evals in one command):
+#   python scripts/run_pca_baseline.py --data_dir /root/autodl-tmp/datasets/185_9bands --seed 42
+#
+# The driver overrides data.pca_matrix_path per run with the train-only matrix it
+# fits, so the placeholder below is only used if you run train_eval.py directly
+# with a pre-existing matrix. Do NOT fit PCA on all 185 images (val/test leakage).
 _base: _defaults.yaml
 
 experiment_name: "pca_baseline"
