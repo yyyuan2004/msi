@@ -9,11 +9,11 @@ import numpy as np
 
 
 def compute_pca_matrix(data_dir, image_dir="images", whole_dir="whole",
-                       n_components=3, max_pixels=500000, seed=42):
+                       n_components=3, max_pixels=500000, seed=42, file_list=None):
     """Compute PCA projection matrix on apple-region pixels.
 
     Steps:
-        1. Load all images/*.npy files (H, W, 9).
+        1. Load images/*.npy files (H, W, 9).
         2. Use whole/*.npy masks to select apple-region pixels (non-background).
         3. Collect 9-dim pixel vectors (random sample if too many).
         4. Fit PCA to get components (n_components, 9) and mean (9,).
@@ -25,6 +25,9 @@ def compute_pca_matrix(data_dir, image_dir="images", whole_dir="whole",
         n_components: Number of PCA components to keep.
         max_pixels: Maximum number of pixels to sample for PCA fitting.
         seed: Random seed for reproducibility.
+        file_list: Optional list of stems (without extension) to restrict fitting
+            to — pass the TRAIN split here to avoid val/test leakage. None = all
+            images in image_dir.
 
     Returns:
         components: (n_components, 9) ndarray — PCA projection matrix.
@@ -38,7 +41,10 @@ def compute_pca_matrix(data_dir, image_dir="images", whole_dir="whole",
     rng = np.random.RandomState(seed)
     all_pixels = []
 
-    fnames = sorted(f for f in os.listdir(image_root) if f.endswith(".npy"))
+    if file_list is not None:
+        fnames = [s if s.endswith(".npy") else s + ".npy" for s in file_list]
+    else:
+        fnames = sorted(f for f in os.listdir(image_root) if f.endswith(".npy"))
     print(f"Computing PCA from {len(fnames)} images...")
 
     for fname in fnames:

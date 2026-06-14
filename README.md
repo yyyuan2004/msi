@@ -44,6 +44,26 @@ Writes to `outputs/gate_band_finder/`: per-run `selected_bands.json`, an aggrega
 `band_selection_frequency.{json,csv}`, and the per-band frequency figure
 `band_frequency.png` (+ `band_frequency_by_k.png`).
 
+### PCA baseline (leak-free, one command)
+
+The PCA 9&rarr;3 projection must be fit on the **training split only** — fitting on
+all 185 images leaks val/test spectra. This driver does the whole thing in one
+step (fit train-only PCA &rarr; results package &rarr; train + eval, same seed = same split):
+
+```bash
+bash run_pca_baseline.sh --data_dir /root/autodl-tmp/datasets/185_9bands --seed 42
+# or directly:
+python scripts/run_pca_baseline.py --data_dir <root> --seed 42
+python scripts/run_pca_baseline.py --data_dir <root> --seed 42 --package_only  # no training
+```
+
+Writes to `outputs/pca_baseline_seed<seed>/`: the train-only `pca_matrix.npz`, the
+training/eval outputs, and a zipped `pca_package/` with 7 CSVs — PCA loadings &
+band contributions, explained variance, per-region (apple/healthy/defect) band
+statistics, defect-vs-healthy separability (Cohen's d + pixel AUC), 9&rarr;3
+reconstruction error, apple-region band correlation, and a per-image audit
+(apple/defect pixel counts + which split each image is in).
+
 ---
 
 ## Dataset
