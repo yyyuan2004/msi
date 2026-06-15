@@ -86,6 +86,7 @@ reconstruction error, apple-region band correlation, and a per-image audit
 | | `spconv_se` | + SpectralConv1D + SE at every skip |
 | | `se` | + SE at every skip |
 | | `spconv` | + SpectralConv1D after S1 |
+| | `input_spconv` | + SpectralConv1D on the raw 9-band input |
 | | `pca_baseline` | PCA-3ch + MobileNetV2-UNet |
 | **SMP** | `smp_unet_resnet18` | U-Net + ResNet18 |
 | | `smp_unet_resnet34` | U-Net + ResNet34 |
