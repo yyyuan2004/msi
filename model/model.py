@@ -37,12 +37,23 @@ class SegmentationModel(nn.Module):
                  first_layer_pretrained=True,
                  skip_module="none", se_reduction=16,
                  use_spectral_conv=False, spectral_conv_kernel_size=3,
+                 use_input_spectral_conv=False, input_spectral_conv_kernel_size=3,
                  band_gate=None):
         super().__init__()
 
         # Optional static band-selection gate at the network input.
         # Receives the wide candidate input and passes exactly k bands.
         self.band_gate = band_gate
+
+        # Optional spectral 1D conv on the RAW input bands (before the encoder).
+        # Mixes adjacent bands of the full multispectral input; channel count is
+        # preserved (in_channels -> in_channels), so the encoder is unchanged.
+        self.use_input_spectral_conv = use_input_spectral_conv
+        if use_input_spectral_conv:
+            self.input_spectral_conv = SpectralConv1D(
+                num_channels=in_channels,
+                kernel_size=input_spectral_conv_kernel_size,
+            )
 
         # Encoder
         encoder_cls = ENCODERS.get(encoder_name)
@@ -77,6 +88,9 @@ class SegmentationModel(nn.Module):
 
         if self.band_gate is not None:
             x = self.band_gate(x)
+
+        if self.use_input_spectral_conv:
+            x = self.input_spectral_conv(x)
 
         features = self.encoder(x)  # [S1, S2, S3, S4, S5]
 
@@ -147,6 +161,8 @@ def build_model(cfg):
         se_reduction=model_cfg.get("se_reduction", 16),
         use_spectral_conv=model_cfg.get("use_spectral_conv", False),
         spectral_conv_kernel_size=model_cfg.get("spectral_conv_kernel_size", 3),
+        use_input_spectral_conv=model_cfg.get("use_input_spectral_conv", False),
+        input_spectral_conv_kernel_size=model_cfg.get("input_spectral_conv_kernel_size", 3),
         band_gate=_build_band_gate(model_cfg, in_channels),
     )
 

@@ -1,0 +1,21 @@
+# Input SpConv: SpectralConv1D on the RAW 9-band input (before the encoder).
+#
+# Unlike `spconv` (which applies SpectralConv1D after encoder stage S1), this
+# mixes adjacent bands of the full multispectral input itself. Channel count is
+# preserved (9 -> 9), so the MobileNetV2 encoder ingests all 9 bands.
+_base: _defaults.yaml
+
+experiment_name: "input_spconv"
+
+model:
+  num_classes: 2
+  encoder_name: "mobilenetv2"
+  encoder_pretrained: true
+  skip_module: "none"
+  use_spectral_conv: false           # not the after-S1 variant
+  use_input_spectral_conv: true      # spectral conv on the raw input bands
+  input_spectral_conv_kernel_size: 3
+
+data:
+  num_channels: 9
+  band_indices: null
