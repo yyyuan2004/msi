@@ -25,9 +25,9 @@ set -e
 DATA_ROOT="/root/autodl-fs/15"
 OUT_ROOT="outputs/gate_batch"
 SEEDS="42,123,456"
-KS="2,3,4"
+KS="3,4,5"
 EPOCHS=150
-EXTRA="--random_k"        # set to "" to disable the random-k control
+EXTRA=""        # set to "" to disable the random-k control
 # =======================
 
 python scripts/run_gate_batch.py \
