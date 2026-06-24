@@ -17,25 +17,28 @@ set -e
 # 17 configs: 2 custom + 7 SMP + 3 TopFormer + 3 SeaFormer + 2 PIDNet
 CONFIGS=(
     "baseline"
-    "spconv_se"
+    "gate_k3"
+    "gate_k4"
+    "gate_k5"
+    # "spconv_se"
     "smp_unet_resnet18"
     "smp_unet_resnet34"
-    "smp_unetplusplus_resnet34"
-    "smp_linknet_resnet34"
-    "smp_manet_resnet34"
+    # "smp_unetplusplus_resnet34"
+    # "smp_linknet_resnet34"
+    # "smp_manet_resnet34"
     "smp_deeplabv3plus_mobilenetv2"
     "smp_fpn_efficientnetb0"
-    "topformer_t"
-    "topformer_s"
-    "topformer_b"
-    "seaformer_t"
-    "seaformer_s"
-    "seaformer_b"
-    "pidnet_s"
-    "pidnet_m"
+    # "topformer_t"
+    # "topformer_s"
+    # "topformer_b"
+    # "seaformer_t"
+    # "seaformer_s"
+    # "seaformer_b"
+    # "pidnet_s"
+    # "pidnet_m"
 )
 
-SEEDS=(42 123 456)
+SEEDS=(42 456 91 1026 1 23 45 67 8889 1010)
 
 # Parse CLI arguments
 KFOLD=0
