@@ -29,7 +29,7 @@ model:
   band_gate_random_select: false  # true = frozen random k-subset control
 
 data:
-  num_channels: 9                 # auto-overridden per dataset by the batch runner
+  num_channels: 15                 # auto-overridden per dataset by the batch runner
   band_indices: null              # use all available bands (do NOT pre-select here)
 
 train:
