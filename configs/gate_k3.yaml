@@ -33,4 +33,4 @@ data:
   band_indices: null              # use all available bands (do NOT pre-select here)
 
 train:
-  num_epochs: 150                 # gate and full use the SAME budget for fairness
+  num_epochs: 1000                 # gate and full use the SAME budget for fairness
