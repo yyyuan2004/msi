@@ -1,0 +1,37 @@
+# Prior-free diagonal band-selection gate (hard top-k) at the network input.
+#
+# Unified model:  M_k = Backbone ∘ G_k.  With k = num_channels the gate is the
+# identity, so the full-input baseline is just this model at k = B (gate off).
+#
+# The gate operates on the WIDE candidate input (all channels of the MSI set)
+# and passes exactly `band_gate_k` bands. Selected indices are written to
+# <output_dir>/selected_bands.json.
+#
+# Comparison arms (the batch runner sets these per run):
+#   - gate     : use_band_gate: true,  band_gate_random_select: false
+#   - full     : use_band_gate: false  (all B channels -> M_{k=B})
+#   - random-k : use_band_gate: true,  band_gate_random_select: true  (control)
+_base: _defaults.yaml
+
+experiment_name: "gate_k4"
+
+model:
+  num_classes: 2
+  encoder_name: "mobilenetv2"
+  encoder_pretrained: true
+  skip_module: "none"
+  use_spectral_conv: false
+
+  use_band_gate: true
+  band_gate_k: 4
+  band_gate_tau_start: 1.0        # soft (explore) -> ...
+  band_gate_tau_end: 0.05         # ... near-hard (commit), cosine annealed
+  band_gate_random_select: false  # true = frozen random k-subset control
+
+data:
+  num_channels: 15                 # auto-overridden per dataset by the batch runner
+  band_indices: null              # use all available bands (do NOT pre-select here)
+
+train:
+  num_epochs: 1000                 # gate and full use the SAME budget for fairness
+  early_stopping_patience: 200
