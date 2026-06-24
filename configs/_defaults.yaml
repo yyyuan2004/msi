@@ -14,18 +14,18 @@ data:
   data_dir: "/root/autodl-tmp/datasets/185_9bands"
   image_dir: "images"
   mask_dir: "masks"
-  num_channels: 4
+  num_channels: 15
   num_classes: 2
   image_size: 512
   crop_size: 384
-  band_indices: [0, 2, 4, 5]
+  band_indices: null
   use_sharpen: false
   sharpen_sigma: 1.0
   sharpen_alpha: 1.5
 
 train:
   batch_size: 32
-  num_epochs: 300
+  num_epochs: 1000
   optimizer: "adamw"
   lr: 5.0e-4
   weight_decay: 1.0e-4
@@ -38,7 +38,7 @@ train:
   ce_weight: 0.5
   dice_weight: 0.5
   save_interval: 99999
-  early_stopping_patience: 70
+  early_stopping_patience: 150
   val_interval: 1
   num_workers: 8
   pin_memory: true
@@ -52,8 +52,8 @@ train:
 
 eval:
   visualize: true
-  num_vis_samples: 10
-  vis_bands: [0, 4, 8]
+  num_vis_samples: 29
+  vis_bands: [8, 8, 8]
 
 # Shared model defaults (deep-merged into every config's `model:` block, so this
 # switch is available in all configs without editing each one).
